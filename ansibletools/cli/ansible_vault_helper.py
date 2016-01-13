@@ -83,6 +83,8 @@ def set_secret(name, secret):
 
     """
     c = load_ansible_cfg()
+    if c is None:
+        c = ConfigParser()
 
     if not c.has_section("vault"):
         c.add_section("vault")
@@ -97,15 +99,25 @@ def set_secret(name, secret):
 
 def load_ansible_cfg():
     """Returns a ConfigParser instance with the contents of ansible.cfg. If the
-    file does not exist, it returns an empty ConfigParser object instead.
+    file does not exist, it returns None.
 
     """
-    c = ConfigParser.ConfigParser()
+    cfg_path = get_ansible_cfg_path()
+    if cfg_path is None:
+        return None
 
-    if is_ansible_cfg_there():
-        c.read(get_ansible_cfg_path())
+    c = ConfigParser.ConfigParser()
+    c.read(cfg_path)
 
     return c
+
+
+def get_ansible_cfg_candidates():
+    if 'ANSIBLE_CONFIG' in os.environ:
+        yield os.environ['ANSIBLE_CONFIG']
+    yield os.path.join(os.getcwd(), "ansible.cfg")
+    yield os.path.expanduser('~/.ansible.cfg')
+    yield '/etc/ansible/ansible.cfg'
 
 
 def is_ansible_cfg_there():
@@ -113,7 +125,11 @@ def is_ansible_cfg_there():
 
 
 def get_ansible_cfg_path():
-    return os.path.join(os.getcwd(), "ansible.cfg")
+    for path in get_ansible_cfg_candidates():
+        if os.path.isfile(path):
+            return path
+
+    return None
 
 
 def get_secret_name():
@@ -124,10 +140,9 @@ def get_secret_name():
     human-readable, non-localized, error message.
 
     """
-    if not is_ansible_cfg_there():
-        return ("", "Unable to find ansible.cfg in the current directory.")
-
     c = load_ansible_cfg()
+    if c is None:
+        return ("", "Unable to find ansible.cfg in the current directory.")
 
     if not c.has_section(CFG_SECTION):
         return ("", "Unable to find 'vault' section within ansible.cfg")
